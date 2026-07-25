@@ -1,6 +1,7 @@
 package marc
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -488,6 +489,21 @@ type decodeOptions struct {
 	encoding         string
 }
 
+func parseDec(b []byte) (int, error) {
+	b = bytes.TrimRight(b, " ")
+	if len(b) == 0 {
+		return 0, strconv.ErrSyntax
+	}
+	n := 0
+	for _, c := range b {
+		if c < '0' || c > '9' {
+			return 0, strconv.ErrSyntax
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n, nil
+}
+
 // DecodeMARC populates the record from data in MARC transmission format,
 // matching pymarc's Record.decode_marc. Only to_unicode=true is currently
 // supported; RawField / to_unicode=false is not yet ported.
@@ -513,7 +529,7 @@ func (r *Record) DecodeMARC(marc []byte, opts decodeOptions) error {
 	r.ToUnicode = opts.toUnicode
 	r.ForceUTF8 = opts.forceUTF8
 
-	baseAddress, err := strconv.Atoi(string(marc[12:17]))
+	baseAddress, err := parseDec(marc[12:17])
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrBaseAddressNotFound, err)
 	}
@@ -523,33 +539,33 @@ func (r *Record) DecodeMARC(marc []byte, opts decodeOptions) error {
 	if baseAddress >= len(marc) {
 		return ErrBaseAddressInvalid
 	}
-	recordLen, err := strconv.Atoi(strings.TrimRight(leader.Slice(0, 5), " "))
+	recordLen, err := parseDec(marc[0:5])
 	if err == nil && len(marc) < recordLen {
 		return ErrTruncatedRecord
 	}
 
-	directory := string(marc[LeaderLen : baseAddress-1])
-	if len(directory)%DirectoryEntryLen != 0 {
+	dirBytes := marc[LeaderLen : baseAddress-1]
+	if len(dirBytes)%DirectoryEntryLen != 0 {
 		return ErrRecordDirectoryInvalid
 	}
-	fieldTotal := len(directory) / DirectoryEntryLen
+	fieldTotal := len(dirBytes) / DirectoryEntryLen
 
-	r.Fields = r.Fields[:0]
+	r.Fields = make([]*Field, 0, fieldTotal)
 	for i := 0; i < fieldTotal; i++ {
-		entry := directory[i*DirectoryEntryLen : (i+1)*DirectoryEntryLen]
-		entryTag := entry[0:3]
-		entryLength, err := strconv.Atoi(entry[3:7])
+		entry := dirBytes[i*DirectoryEntryLen : (i+1)*DirectoryEntryLen]
+		entryTag := string(entry[0:3])
+		entryLength, err := parseDec(entry[3:7])
 		if err != nil {
-			return fmt.Errorf("%w: bad field length in directory entry %q", ErrRecordDirectoryInvalid, entry)
+			return fmt.Errorf("%w: bad field length in directory entry %q", ErrRecordDirectoryInvalid, string(entry))
 		}
-		entryOffset, err := strconv.Atoi(entry[7:12])
+		entryOffset, err := parseDec(entry[7:12])
 		if err != nil {
-			return fmt.Errorf("%w: bad field offset in directory entry %q", ErrRecordDirectoryInvalid, entry)
+			return fmt.Errorf("%w: bad field offset in directory entry %q", ErrRecordDirectoryInvalid, string(entry))
 		}
 		start := baseAddress + entryOffset
 		end := start + entryLength - 1
 		if start < 0 || end > len(marc) || start > end {
-			return fmt.Errorf("%w: field data out of range for entry %q", ErrRecordDirectoryInvalid, entry)
+			return fmt.Errorf("%w: field data out of range for entry %q", ErrRecordDirectoryInvalid, string(entry))
 		}
 		entryData := marc[start:end]
 
@@ -572,58 +588,53 @@ func (r *Record) DecodeMARC(marc []byte, opts decodeOptions) error {
 }
 
 func decodeDataField(tag string, entryData []byte, leader *Leader, encoding string, opts decodeOptions) (*Field, error) {
-	subs := splitBytes(entryData, SubfieldIndicator)
-
 	firstInd, secondInd := " ", " "
-	switch len(subs[0]) {
-	case 0:
-	case 1:
-		firstInd = string(subs[0][0])
-	case 2:
-		firstInd = string(subs[0][0])
-		secondInd = string(subs[0][1])
-	default:
-		firstInd = string(subs[0][0])
-		secondInd = string(subs[0][1])
+	if len(entryData) > 0 {
+		firstInd = string(entryData[0])
+	}
+	if len(entryData) > 1 {
+		secondInd = string(entryData[1])
 	}
 
 	var subfields []Subfield
-	for _, sub := range subs[1:] {
-		if len(sub) == 0 {
-			continue
-		}
-		code := string(sub[0])
-		data := sub[1:]
+	idx := bytes.IndexByte(entryData, SubfieldIndicator)
+	if idx != -1 {
+		rest := entryData[idx:]
+		for len(rest) > 0 && rest[0] == SubfieldIndicator {
+			rest = rest[1:]
+			if len(rest) == 0 {
+				break
+			}
+			code := string(rest[0])
+			rest = rest[1:]
 
-		var value string
-		var err error
-		if leader.Byte(9) == 'a' || opts.forceUTF8 {
-			value, err = decodeUTF8(data, opts.utf8Handling)
-		} else if encoding == "iso8859-1" {
-			value, err = marc8ToUnicode(data, opts.hideUTF8Warnings)
-		} else {
-			value, err = decodeCharset(data, encoding)
+			nextIdx := bytes.IndexByte(rest, SubfieldIndicator)
+			var data []byte
+			if nextIdx == -1 {
+				data = rest
+				rest = nil
+			} else {
+				data = rest[:nextIdx]
+				rest = rest[nextIdx:]
+			}
+
+			var value string
+			var err error
+			if leader.Byte(9) == 'a' || opts.forceUTF8 {
+				value, err = decodeUTF8(data, opts.utf8Handling)
+			} else if encoding == "iso8859-1" {
+				value, err = marc8ToUnicode(data, opts.hideUTF8Warnings)
+			} else {
+				value, err = decodeCharset(data, encoding)
+			}
+			if err != nil {
+				return nil, err
+			}
+			subfields = append(subfields, Subfield{Code: code, Value: value})
 		}
-		if err != nil {
-			return nil, err
-		}
-		subfields = append(subfields, Subfield{Code: code, Value: value})
 	}
 
 	return NewField(tag, Indicators{First: firstInd, Second: secondInd}, subfields, ""), nil
-}
-
-func splitBytes(data []byte, sep byte) [][]byte {
-	var out [][]byte
-	start := 0
-	for i, b := range data {
-		if b == sep {
-			out = append(out, data[start:i])
-			start = i + 1
-		}
-	}
-	out = append(out, data[start:])
-	return out
 }
 
 func decodeUTF8(data []byte, mode string) (string, error) {

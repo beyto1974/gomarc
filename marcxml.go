@@ -3,44 +3,118 @@ package marc
 import (
 	"encoding/xml"
 	"io"
+	"strings"
 )
 
 // MARCXML (de)serialization. Ported from pymarc/marcxml.py.
 const marcXMLNamespace = "http://www.loc.gov/MARC21/slim"
 
-// xmlFieldEntry preserves control/data field order within a <record>, which a
-// naive struct-tag decode (separate slices per element name) would lose.
-type xmlFieldEntry struct {
-	control      bool
-	controlfield xmlControlfield
-	datafield    xmlDatafield
+// decodeRecord walks the <record> subtree token by token, building a Record directly
+// without reflection or intermediate decoding structs for high performance.
+func decodeRecord(d *xml.Decoder, start xml.StartElement) (*Record, error) {
+	rec := &Record{ToUnicode: true}
+	var leaderStr string
+	hasLeader := false
+
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return nil, err
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			switch t.Name.Local {
+			case "leader":
+				val, err := readCharData(d, "leader")
+				if err != nil {
+					return nil, err
+				}
+				leaderStr = val
+				hasLeader = true
+			case "controlfield":
+				var tag string
+				for _, attr := range t.Attr {
+					if attr.Name.Local == "tag" {
+						tag = attr.Value
+						break
+					}
+				}
+				val, err := readCharData(d, "controlfield")
+				if err != nil {
+					return nil, err
+				}
+				rec.AddField(NewControlField(tag, val))
+			case "datafield":
+				var tag, ind1, ind2 string
+				ind1, ind2 = " ", " "
+				for _, attr := range t.Attr {
+					switch attr.Name.Local {
+					case "tag":
+						tag = attr.Value
+					case "ind1":
+						if attr.Value != "" {
+							ind1 = attr.Value
+						}
+					case "ind2":
+						if attr.Value != "" {
+							ind2 = attr.Value
+						}
+					}
+				}
+				f := NewDataField(tag, ind1, ind2)
+				if err := decodeSubfields(d, f); err != nil {
+					return nil, err
+				}
+				rec.AddField(f)
+			default:
+				if err := d.Skip(); err != nil {
+					return nil, err
+				}
+			}
+		case xml.EndElement:
+			if t.Name.Local == start.Name.Local {
+				if !hasLeader {
+					leaderStr = defaultLeaderInput()
+				}
+				ldr, err := NewLeader(leaderStr)
+				if err != nil {
+					return nil, err
+				}
+				rec.Leader = ldr
+				return rec, nil
+			}
+		}
+	}
 }
 
-type xmlControlfield struct {
-	Tag   string `xml:"tag,attr"`
-	Value string `xml:",chardata"`
+func readCharData(d *xml.Decoder, elemName string) (string, error) {
+	var buf strings.Builder
+	depth := 0
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return "", err
+		}
+		switch t := tok.(type) {
+		case xml.CharData:
+			if depth == 0 {
+				buf.Write(t)
+			}
+		case xml.StartElement:
+			depth++
+			if err := d.Skip(); err != nil {
+				return "", err
+			}
+			depth--
+		case xml.EndElement:
+			if t.Name.Local == elemName && depth == 0 {
+				return buf.String(), nil
+			}
+		}
+	}
 }
 
-type xmlSubfield struct {
-	Code  string `xml:"code,attr"`
-	Value string `xml:",chardata"`
-}
-
-type xmlDatafield struct {
-	Tag       string        `xml:"tag,attr"`
-	Ind1      string        `xml:"ind1,attr"`
-	Ind2      string        `xml:"ind2,attr"`
-	Subfields []xmlSubfield `xml:"subfield"`
-}
-
-type xmlRecordElem struct {
-	Leader string
-	Fields []xmlFieldEntry
-}
-
-// UnmarshalXML walks the <record> subtree token by token so that
-// controlfield/datafield order is preserved, matching MARCXML's field order.
-func (rec *xmlRecordElem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+func decodeSubfields(d *xml.Decoder, f *Field) error {
 	for {
 		tok, err := d.Token()
 		if err != nil {
@@ -48,63 +122,30 @@ func (rec *xmlRecordElem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) e
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
-			switch t.Name.Local {
-			case "leader":
-				var s string
-				if err := d.DecodeElement(&s, &t); err != nil {
+			if t.Name.Local == "subfield" {
+				var code string
+				for _, attr := range t.Attr {
+					if attr.Name.Local == "code" {
+						code = attr.Value
+						break
+					}
+				}
+				val, err := readCharData(d, "subfield")
+				if err != nil {
 					return err
 				}
-				rec.Leader = s
-			case "controlfield":
-				var cf xmlControlfield
-				if err := d.DecodeElement(&cf, &t); err != nil {
-					return err
-				}
-				rec.Fields = append(rec.Fields, xmlFieldEntry{control: true, controlfield: cf})
-			case "datafield":
-				var df xmlDatafield
-				if err := d.DecodeElement(&df, &t); err != nil {
-					return err
-				}
-				rec.Fields = append(rec.Fields, xmlFieldEntry{control: false, datafield: df})
-			default:
+				f.AddSubfield(code, val)
+			} else {
 				if err := d.Skip(); err != nil {
 					return err
 				}
 			}
 		case xml.EndElement:
-			if t.Name.Local == start.Name.Local {
+			if t.Name.Local == "datafield" {
 				return nil
 			}
 		}
 	}
-}
-
-func (rec *xmlRecordElem) toRecord() (*Record, error) {
-	leader, err := NewLeader(rec.Leader)
-	if err != nil {
-		return nil, err
-	}
-	r := &Record{Leader: leader, ToUnicode: true}
-	for _, fe := range rec.Fields {
-		if fe.control {
-			r.AddField(NewControlField(fe.controlfield.Tag, fe.controlfield.Value))
-			continue
-		}
-		ind1, ind2 := fe.datafield.Ind1, fe.datafield.Ind2
-		if ind1 == "" {
-			ind1 = " "
-		}
-		if ind2 == "" {
-			ind2 = " "
-		}
-		subs := make([]Subfield, len(fe.datafield.Subfields))
-		for i, s := range fe.datafield.Subfields {
-			subs[i] = Subfield(s)
-		}
-		r.AddField(NewDataField(fe.datafield.Tag, ind1, ind2, subs...))
-	}
-	return r, nil
 }
 
 // XMLReader iterates over <record> elements in a MARCXML collection (or a
@@ -133,11 +174,7 @@ func (xr *XMLReader) Next() (*Record, error) {
 		if !ok || start.Name.Local != "record" {
 			continue
 		}
-		var elem xmlRecordElem
-		if err := xr.dec.DecodeElement(&elem, &start); err != nil {
-			return nil, err
-		}
-		return elem.toRecord()
+		return decodeRecord(xr.dec, start)
 	}
 }
 

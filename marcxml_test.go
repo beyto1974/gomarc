@@ -151,3 +151,19 @@ func TestXMLBadTag(t *testing.T) {
 		t.Errorf("want ErrRecordLeaderInvalid, got %v", err)
 	}
 }
+
+func BenchmarkParseXML(b *testing.B) {
+	data, err := os.ReadFile("testdata/batch.xml")
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r := bytes.NewReader(data)
+		_, err := ParseXML(r)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}

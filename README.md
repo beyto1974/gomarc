@@ -152,6 +152,24 @@ go run ./cmd/marcdump testdata/marc.dat
 go run ./cmd/marcdump -json testdata/marc.dat
 ```
 
+## Performance & Comparison with pymarc
+
+`gomarc` features a high-performance, streaming parser architecture designed for high-throughput processing, featuring zero-allocation field tag normalization, direct byte-slice integer parsing, and reflection-free MARCXML decoding.
+
+### Benchmarks (`gomarc` vs. `pymarc`)
+
+| Task / File Format | `pymarc` Execution Time | `gomarc` Execution Time | `pymarc` Memory Footprint | `gomarc` Memory Footprint | Speedup |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **NLM MARCXML Dataset** (`catplus.marcxml.xml`, 2,663 recs, 15.2 MB) | 858.86 ms | **367.78 ms** (138 µs/rec) | ~140 MB | **~25 MB** | **~2.3x faster** |
+| **MARCXML Parsing** (`batch.xml`, 2 recs) | 493.92 µs | **155.41 µs** | 3.43 MB | **61.2 KB** (1,559 allocs) | **~3.2x faster** (~56x less memory) |
+| **ISO 2709 MARC** (`test.dat`, 10 recs) | 1,922.14 µs | **123.46 µs** | 83.9 KB | **78.6 KB** (2,155 allocs) | **~15.5x faster** |
+
+To run the built-in benchmarks with memory profiling:
+
+```sh
+go test -bench=Benchmark -benchmem ./...
+```
+
 ## Testing
 
 ```sh

@@ -34,8 +34,8 @@ func isAllDigits(s string) bool {
 	if s == "" {
 		return false
 	}
-	for _, r := range s {
-		if r < '0' || r > '9' {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
 			return false
 		}
 	}
@@ -45,6 +45,9 @@ func isAllDigits(s string) bool {
 // normalizeTag zero-pads all-digit tags to 3 characters, matching pymarc's
 // Field.__init__ tag normalization; non-digit tags pass through unchanged.
 func normalizeTag(tag string) string {
+	if len(tag) == 3 && isAllDigits(tag) {
+		return tag
+	}
 	if !isAllDigits(tag) {
 		return tag
 	}

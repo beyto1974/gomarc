@@ -167,3 +167,24 @@ func TestReaderTruncatedDataCases(t *testing.T) {
 		}
 	})
 }
+
+func BenchmarkReader(b *testing.B) {
+	data, err := os.ReadFile("testdata/test.dat")
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		rdr := NewReaderFromBytes(data)
+		for {
+			_, err := rdr.Next()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+}
