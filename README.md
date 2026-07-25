@@ -1,14 +1,23 @@
-# marc21
+# gomarc
 
-`marc21` reads, writes, and modifies bibliographic records encoded in
+`gomarc` reads, writes, and modifies bibliographic records encoded in
 [MARC21](https://en.wikipedia.org/wiki/MARC_standards). It's a Go port of the
 Python library [pymarc](https://gitlab.com/pymarc/pymarc), covering the binary
 MARC21 transmission format, MARC-8 to Unicode conversion, MARC-in-JSON, and
 MARCXML.
 
-```go
-import marc "marc21"
+## Installation
+
+```sh
+go get github.com/beyto1974/gomarc@v0.1.0
 ```
+
+```go
+import marc "github.com/beyto1974/gomarc"
+```
+
+Public repo, so the normal module proxy (proxy.golang.org) and checksum
+database (sum.golang.org) resolve it with no extra setup.
 
 ## Reading
 
