@@ -19,12 +19,12 @@ func TestMarc8ToUnicodeBulk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer marc8File.Close()
+	defer func() { _ = marc8File.Close() }()
 	utf8File, err := os.Open("testdata/test_utf8.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer utf8File.Close()
+	defer func() { _ = utf8File.Close() }()
 
 	marc8Scanner := bufio.NewScanner(marc8File)
 	marc8Scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)

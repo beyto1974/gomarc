@@ -100,7 +100,7 @@ func (rec *xmlRecordElem) toRecord() (*Record, error) {
 		}
 		subs := make([]Subfield, len(fe.datafield.Subfields))
 		for i, s := range fe.datafield.Subfields {
-			subs[i] = Subfield{Code: s.Code, Value: s.Value}
+			subs[i] = Subfield(s)
 		}
 		r.AddField(NewDataField(fe.datafield.Tag, ind1, ind2, subs...))
 	}

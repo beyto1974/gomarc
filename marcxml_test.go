@@ -16,7 +16,7 @@ func mustOpen(t *testing.T, name string) *os.File {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { f.Close() })
+	t.Cleanup(func() { _ = f.Close() })
 	return f
 }
 
@@ -130,9 +130,16 @@ func TestXMLNamespaces(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	xw, _ := NewXMLWriter(&buf)
-	xw.Write(rec)
-	xw.Close()
+	xw, err := NewXMLWriter(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := xw.Write(rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := xw.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if !bytes.Contains(buf.Bytes(), []byte(`xmlns="http://www.loc.gov/MARC21/slim"`)) {
 		t.Error("want xmlns present on collection wrapper")
 	}
