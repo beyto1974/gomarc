@@ -24,10 +24,17 @@ func main() {
 		fmt.Fprintf(os.Stderr, "usage: marcconv [-from marc|xml|json] [-to marc|xml|json|text] [-o output] [input]\n\n"+
 			"Streams MARC21 records from input (or stdin) to the target format, one\n"+
 			"record at a time. With neither -from nor -to given, formats are guessed\n"+
-			"from the .mrc/.marc/.xml/.json/.txt extensions of the input file and -o.\n\n")
+			"from the .mrc/.marc/.xml/.json/.txt extensions of the input file and -o.\n"+
+			"Flags may appear before or after the input file.\n\n")
 		flag.PrintDefaults()
 	}
-	flag.Parse()
+	// flag.Parse stops at the first non-flag argument, so flags placed after
+	// the input file (e.g. "marcconv in.dat -o out.json", as shown in the
+	// README) would otherwise be misread as extra positional arguments.
+	// Reorder so flags always reach the parser regardless of where they sit.
+	if err := flag.CommandLine.Parse(reorderArgs(os.Args[1:])); err != nil {
+		os.Exit(2)
+	}
 
 	if flag.NArg() > 1 {
 		flag.Usage()
@@ -86,6 +93,36 @@ func main() {
 		fmt.Fprintln(os.Stderr, "marcconv:", err)
 		os.Exit(1)
 	}
+}
+
+// reorderArgs moves recognized flag tokens (and, for flags that take a
+// value, the token following them) ahead of positional arguments, so that
+// flag.Parse — which stops scanning at the first non-flag token — sees them
+// regardless of where the user placed them relative to the input file.
+func reorderArgs(args []string) []string {
+	valueFlags := map[string]bool{"from": true, "to": true, "o": true}
+	var flags, positional []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			positional = append(positional, args[i+1:]...)
+			break
+		}
+		name, isFlag := strings.CutPrefix(a, "--")
+		if !isFlag {
+			name, isFlag = strings.CutPrefix(a, "-")
+		}
+		if !isFlag || name == "" {
+			positional = append(positional, a)
+			continue
+		}
+		flags = append(flags, a)
+		if !strings.Contains(name, "=") && valueFlags[name] && i+1 < len(args) {
+			i++
+			flags = append(flags, args[i])
+		}
+	}
+	return append(flags, positional...)
 }
 
 // guessFormat maps a file extension to a format name, or "" if unrecognized
