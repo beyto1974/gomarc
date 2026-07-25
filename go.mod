@@ -1,4 +1,4 @@
-module marc21
+module github.com/beyto1974/gomarc
 
 go 1.25.0
 

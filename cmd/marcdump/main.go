@@ -9,7 +9,7 @@ import (
 	"io"
 	"os"
 
-	marc "marc21"
+	marc "github.com/beyto1974/gomarc"
 )
 
 func main() {
