@@ -186,7 +186,7 @@ func TestFieldValue(t *testing.T) {
 	}
 }
 
-func TestNonIntegerTag(t *testing.T) {
+func TestNonIntegerTag(_ *testing.T) {
 	// must not panic
 	NewDataField("3 0", "0", "1", Subfield{Code: "a", Value: "foo"})
 }
