@@ -3,6 +3,7 @@ package marc
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"reflect"
 	"testing"
 )
@@ -151,6 +152,100 @@ func TestParseJSONXMLEquivalence(t *testing.T) {
 		if !bytes.Equal(jb, xb) {
 			t.Errorf("record %d: as_marc mismatch between JSON and XML sources", i)
 		}
+	}
+}
+
+func TestJSONReaderArray(t *testing.T) {
+	data := mustReadFile(t, "test.json")
+	want, err := ParseJSON(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	jr := NewJSONReader(bytes.NewReader(data))
+	var got []*Record
+	for {
+		rec, err := jr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, rec)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("want %d records, got %d", len(want), len(got))
+	}
+	for i := range got {
+		gb, err := got[i].AsMARC()
+		if err != nil {
+			t.Fatal(err)
+		}
+		wb, err := want[i].AsMARC()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(gb, wb) {
+			t.Errorf("record %d: as_marc mismatch between JSONReader and ParseJSON", i)
+		}
+	}
+
+	if _, err := jr.Next(); err != io.EOF {
+		t.Errorf("want io.EOF after exhausting reader, got %v", err)
+	}
+}
+
+func TestJSONReaderSingleRecordNotArray(t *testing.T) {
+	all := mustReadFile(t, "test.json")
+	var original []any
+	if err := json.Unmarshal(sanitizeLenientJSON(all), &original); err != nil {
+		t.Fatal(err)
+	}
+	single, err := json.Marshal(original[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	jr := NewJSONReader(bytes.NewReader(single))
+	rec, err := jr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := jr.Next(); err != io.EOF {
+		t.Errorf("want io.EOF after single bare record, got %v", err)
+	}
+
+	b, err := json.Marshal(rec.AsDict())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got any
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, original[0]) {
+		t.Errorf("got %#v want %#v", got, original[0])
+	}
+}
+
+func TestJSONReaderLenientControlChars(t *testing.T) {
+	// A literal (unescaped) newline embedded in a JSON string value, as
+	// produced by some real-world MARC-in-JSON writers (see
+	// sanitizeLenientJSON/lenientJSONFilter).
+	raw := []byte("{\"leader\":\"          22        4500\",\"fields\":[" +
+		"{\"245\":{\"ind1\":\"0\",\"ind2\":\"1\",\"subfields\":[{\"a\":\"line one\nline two\"}]}}]}")
+
+	jr := NewJSONReader(bytes.NewReader(raw))
+	rec, err := jr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want, got := "line one\nline two", rec.Fields[0].Subfields[0].Value; got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+	if _, err := jr.Next(); err != io.EOF {
+		t.Errorf("want io.EOF after single bare record, got %v", err)
 	}
 }
 
