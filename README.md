@@ -142,7 +142,7 @@ for {
 }
 ```
 
-## Example CLI
+## Example CLIs
 
 `cmd/marcdump` is a small example program that dumps a binary MARC21 file as
 MARCMaker-style text (default) or MARC-in-JSON (`-json`):
@@ -150,6 +150,18 @@ MARCMaker-style text (default) or MARC-in-JSON (`-json`):
 ```sh
 go run ./cmd/marcdump testdata/marc.dat
 go run ./cmd/marcdump -json testdata/marc.dat
+```
+
+`cmd/marcconv` streams records between binary MARC, MARCXML, and MARC-in-JSON
+(and out to MARCMaker text), converting one record at a time rather than
+loading the whole input into memory. Formats are guessed from file
+extensions (`.mrc`/`.marc`/`.dat`, `.xml`, `.json`, `.txt`) when not given
+explicitly; use `-from`/`-to` when reading from or writing to stdin/stdout:
+
+```sh
+go run ./cmd/marcconv testdata/marc.dat -o out.json   # marc -> json, guessed from extensions
+go run ./cmd/marcconv -from xml -to json < in.xml > out.json
+go run ./cmd/marcconv -from marc -to text testdata/marc.dat  # MARCMaker text to stdout
 ```
 
 ## Testing

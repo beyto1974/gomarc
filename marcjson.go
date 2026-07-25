@@ -1,6 +1,7 @@
 package marc
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -25,50 +26,91 @@ type jsonDataField struct {
 	Subfields []jsonSubfield `json:"subfields"`
 }
 
-// sanitizeLenientJSON escapes raw control bytes (e.g. literal newlines) found
-// inside JSON string literals. Real-world MARC-in-JSON is sometimes produced
-// with unescaped control characters in fixed-field data (pymarc's JSONReader
-// reads it via json.load(..., strict=False), which permits this); Go's
-// encoding/json has no equivalent lenient mode, so we pre-escape instead.
-func sanitizeLenientJSON(data []byte) []byte {
-	var out bytes.Buffer
-	inString := false
-	escaped := false
+// lenientJSONFilter streams data from src, escaping raw control bytes (e.g.
+// literal newlines) found inside JSON string literals. Real-world
+// MARC-in-JSON is sometimes produced with unescaped control characters in
+// fixed-field data (pymarc's JSONReader reads it via json.load(...,
+// strict=False), which permits this); Go's encoding/json has no equivalent
+// lenient mode, so this pre-escapes on the fly rather than requiring the
+// whole document to be buffered first.
+type lenientJSONFilter struct {
+	src               io.Reader
+	inString, escaped bool
+	pending           []byte
+	rbuf              []byte
+	err               error
+}
+
+func (l *lenientJSONFilter) Read(p []byte) (int, error) {
+	for len(l.pending) == 0 {
+		if l.err != nil {
+			return 0, l.err
+		}
+		if l.rbuf == nil {
+			l.rbuf = make([]byte, 4096)
+		}
+		n, err := l.src.Read(l.rbuf)
+		if n > 0 {
+			l.pending = append(l.pending, l.transform(l.rbuf[:n])...)
+		}
+		if err != nil {
+			l.err = err
+		}
+	}
+	n := copy(p, l.pending)
+	l.pending = l.pending[n:]
+	return n, nil
+}
+
+func (l *lenientJSONFilter) transform(data []byte) []byte {
+	out := make([]byte, 0, len(data))
 	for _, b := range data {
-		if !inString {
-			out.WriteByte(b)
+		if !l.inString {
+			out = append(out, b)
 			if b == '"' {
-				inString = true
+				l.inString = true
 			}
 			continue
 		}
-		if escaped {
-			out.WriteByte(b)
-			escaped = false
+		if l.escaped {
+			out = append(out, b)
+			l.escaped = false
 			continue
 		}
 		switch b {
 		case '\\':
-			out.WriteByte(b)
-			escaped = true
+			out = append(out, b)
+			l.escaped = true
 		case '"':
-			out.WriteByte(b)
-			inString = false
+			out = append(out, b)
+			l.inString = false
 		case '\n':
-			out.WriteString(`\n`)
+			out = append(out, '\\', 'n')
 		case '\r':
-			out.WriteString(`\r`)
+			out = append(out, '\\', 'r')
 		case '\t':
-			out.WriteString(`\t`)
+			out = append(out, '\\', 't')
 		default:
 			if b < 0x20 {
-				fmt.Fprintf(&out, `\u%04x`, b)
+				out = append(out, []byte(fmt.Sprintf(`\u%04x`, b))...)
 			} else {
-				out.WriteByte(b)
+				out = append(out, b)
 			}
 		}
 	}
-	return out.Bytes()
+	return out
+}
+
+// sanitizeLenientJSON is the non-streaming form of lenientJSONFilter, used by
+// ParseJSON which already requires the whole document in memory.
+func sanitizeLenientJSON(data []byte) []byte {
+	out, err := io.ReadAll(&lenientJSONFilter{src: bytes.NewReader(data)})
+	if err != nil {
+		// bytes.Reader never returns an error other than io.EOF, which
+		// io.ReadAll does not surface as an error.
+		panic(err)
+	}
+	return out
 }
 
 // ParseJSON parses MARC-in-JSON data, which may be a single record object or
@@ -127,6 +169,81 @@ func jsonRecordToRecord(jr jsonRecord) (*Record, error) {
 		}
 	}
 	return r, nil
+}
+
+// JSONReader iterates over records in a MARC-in-JSON document, decoding one
+// record at a time rather than loading the whole document, whether it is a
+// top-level array or a single bare record object. Unlike ParseJSON, it does
+// not require the input to fit in memory at once.
+type JSONReader struct {
+	br      *bufio.Reader
+	dec     *json.Decoder
+	isArray bool
+	done    bool
+}
+
+// NewJSONReader builds a JSONReader over r.
+func NewJSONReader(r io.Reader) *JSONReader {
+	return &JSONReader{br: bufio.NewReader(&lenientJSONFilter{src: r})}
+}
+
+// init peeks the first non-whitespace byte to determine whether the document
+// is a top-level array (in which case it consumes the opening '[' so the
+// decoder tracks array context for Decoder.More) or a single bare record.
+func (jr *JSONReader) init() error {
+	for {
+		b, err := jr.br.ReadByte()
+		if err != nil {
+			return err
+		}
+		switch b {
+		case ' ', '\t', '\n', '\r':
+			continue
+		}
+		if err := jr.br.UnreadByte(); err != nil {
+			return err
+		}
+		jr.dec = json.NewDecoder(jr.br)
+		if b == '[' {
+			jr.isArray = true
+			if _, err := jr.dec.Token(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
+// Next decodes and returns the next record, or (nil, io.EOF) at end of document.
+func (jr *JSONReader) Next() (*Record, error) {
+	if jr.done {
+		return nil, io.EOF
+	}
+	if jr.dec == nil {
+		if err := jr.init(); err != nil {
+			jr.done = true
+			return nil, err
+		}
+	}
+
+	if jr.isArray {
+		if !jr.dec.More() {
+			jr.done = true
+			if _, err := jr.dec.Token(); err != nil { // consume closing ']'
+				return nil, err
+			}
+			return nil, io.EOF
+		}
+	} else {
+		jr.done = true
+	}
+
+	var jr2 jsonRecord
+	if err := jr.dec.Decode(&jr2); err != nil {
+		jr.done = true
+		return nil, fmt.Errorf("marc: parsing MARC-in-JSON record: %w", err)
+	}
+	return jsonRecordToRecord(jr2)
 }
 
 // JSONWriter writes records as a MARC-in-JSON array. Close must be called to
