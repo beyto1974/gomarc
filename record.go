@@ -7,9 +7,19 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/charmap"
 )
 
 var isbnRegex = regexp.MustCompile(`[0-9\-xX]+`)
+
+// namedCharsets maps a lowercased file_encoding name to its decoder, for the
+// non-MARC8, non-UTF-8 charsets DecodeMARC supports.
+var namedCharsets = map[string]encoding.Encoding{
+	"cp1251":       charmap.Windows1251,
+	"windows-1251": charmap.Windows1251,
+}
 
 // Record represents a MARC record: a Leader plus an ordered list of Fields.
 // Ported from pymarc/record.py.
@@ -592,7 +602,7 @@ func decodeDataField(tag string, entryData []byte, leader *Leader, encoding stri
 		} else if encoding == "iso8859-1" {
 			value, err = marc8ToUnicode(data, opts.hideUTF8Warnings)
 		} else {
-			return nil, fmt.Errorf("marc: unsupported file encoding %q", encoding)
+			value, err = decodeCharset(data, encoding)
 		}
 		if err != nil {
 			return nil, err
@@ -628,6 +638,20 @@ func decodeUTF8(data []byte, mode string) (string, error) {
 	default:
 		return "", fmt.Errorf("marc: invalid utf-8 in subfield data")
 	}
+}
+
+// decodeCharset decodes data using a non-MARC8, non-UTF-8 file encoding, matching
+// pymarc's file_encoding parameter. Only a small set of charsets are supported.
+func decodeCharset(data []byte, encoding string) (string, error) {
+	enc, ok := namedCharsets[strings.ToLower(encoding)]
+	if !ok {
+		return "", fmt.Errorf("marc: unsupported file encoding %q", encoding)
+	}
+	out, err := enc.NewDecoder().Bytes(data)
+	if err != nil {
+		return "", fmt.Errorf("marc: decoding %q: %w", encoding, err)
+	}
+	return string(out), nil
 }
 
 // AsMARC serializes the record into MARC transmission-format bytes,
