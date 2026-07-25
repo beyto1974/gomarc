@@ -95,7 +95,7 @@ func (f *Field) String() string {
 	}
 	var ind strings.Builder
 	for _, v := range []string{f.Indicators.First, f.Indicators.Second} {
-		if v == " " || v == "\\" || v == "" {
+		if v == " " || v == "\\" {
 			ind.WriteString("\\")
 		} else {
 			ind.WriteString(v)
