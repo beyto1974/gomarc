@@ -16,7 +16,8 @@
 //		if errors.Is(err, io.EOF) {
 //			break
 //		}
-//		fmt.Println(record.Title())
+//		title, _ := record.Title()
+//		fmt.Println(title)
 //	}
 //
 // # Writing

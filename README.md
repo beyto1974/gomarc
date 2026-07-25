@@ -38,7 +38,8 @@ for {
 		log.Println(err) // Reader is permissive: bad records are skipped, not fatal
 		continue
 	}
-	fmt.Println(record.Title())
+	title, _ := record.Title()
+	fmt.Println(title)
 }
 ```
 
@@ -136,7 +137,8 @@ for {
 	if errors.Is(err, io.EOF) {
 		break
 	}
-	fmt.Println(record.Title())
+	title, _ := record.Title()
+	fmt.Println(title)
 }
 ```
 
