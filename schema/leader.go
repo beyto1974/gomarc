@@ -1,0 +1,188 @@
+package schema
+
+// leaderFields describes all 14 named positions/ranges of the 24-byte MARC21
+// leader. Source: https://www.loc.gov/marc/bibliographic/bdleader.html
+var leaderFields = []LeaderField{
+	{
+		Position:   "00-04",
+		Name:       "RecordLength",
+		Label:      "Record length",
+		Definition: "A five-character ASCII numeric string that equals the length of the entire record, including itself and the record terminator. The number is right-justified and unused positions contain zeros.",
+	},
+	{
+		Position:   "05",
+		Name:       "RecordStatus",
+		Label:      "Record status",
+		Definition: "A one-character code that indicates the relationship of the record to a file, e.g. whether it is new, corrected, or deleted.",
+		Values: map[string]string{
+			"a": "Increase in encoding level",
+			"c": "Corrected or revised",
+			"d": "Deleted",
+			"n": "New",
+			"p": "Increase in encoding level from prepublication record",
+		},
+	},
+	{
+		Position:   "06",
+		Name:       "TypeOfRecord",
+		Label:      "Type of record",
+		Definition: "A one-character code used to define the characteristics and components of the record. The code used determines the format of the record and the applicable content designation.",
+		Values: map[string]string{
+			"a": "Language material",
+			"b": "Archival and manuscripts control [OBSOLETE]",
+			"c": "Notated music",
+			"d": "Manuscript notated music",
+			"e": "Cartographic material",
+			"f": "Manuscript cartographic material",
+			"g": "Projected medium",
+			"h": "Microform publications [OBSOLETE]",
+			"i": "Nonmusical sound recording",
+			"j": "Musical sound recording",
+			"k": "Two-dimensional nonprojected graphic",
+			"m": "Computer file",
+			"o": "Kit",
+			"p": "Mixed materials",
+			"r": "Three-dimensional artifact or naturally occurring object",
+			"t": "Manuscript language material",
+		},
+	},
+	{
+		Position:   "07",
+		Name:       "BibliographicLevel",
+		Label:      "Bibliographic level",
+		Definition: "A one-character code that indicates the bibliographic level of the record.",
+		Values: map[string]string{
+			"a": "Monographic component part",
+			"b": "Serial component part",
+			"c": "Collection",
+			"d": "Subunit",
+			"i": "Integrating resource",
+			"m": "Monograph/item",
+			"s": "Serial",
+		},
+	},
+	{
+		Position:   "08",
+		Name:       "TypeOfControl",
+		Label:      "Type of control",
+		Definition: "A one-character code that indicates the type of control that applies to the record.",
+		Values: map[string]string{
+			"#": "No specific type of control",
+			"a": "Archival",
+		},
+	},
+	{
+		Position:   "09",
+		Name:       "CodingScheme",
+		Label:      "Character coding scheme",
+		Definition: "A one-character code that indicates the character coding scheme used in the record. Most modern records use Unicode (UTF-8).",
+		Values: map[string]string{
+			"#": "MARC-8 (legacy encoding)",
+			"a": "Unicode (UTF-8)",
+		},
+	},
+	{
+		Position:   "10",
+		Name:       "IndicatorCount",
+		Label:      "Indicator count",
+		Definition: "A one-character number that indicates the number of indicators occurring in each variable data field. In MARC 21, the value is always 2.",
+		Values: map[string]string{
+			"2": "Number of indicators in each variable data field (always 2)",
+		},
+	},
+	{
+		Position:   "11",
+		Name:       "SubfieldCodeCount",
+		Label:      "Subfield code count",
+		Definition: "A one-character number that indicates the number of character positions used for a subfield code in each variable data field. In MARC 21, the value is always 2 (the delimiter plus the code character).",
+		Values: map[string]string{
+			"2": "Number of characters in a subfield code (always 2: delimiter + code)",
+		},
+	},
+	{
+		Position:   "12-16",
+		Name:       "BaseAddress",
+		Label:      "Base address of data",
+		Definition: "A five-character ASCII numeric string that indicates the first character position of the first variable field in a record. The number is right-justified and unused positions contain zeros.",
+	},
+	{
+		Position:   "17",
+		Name:       "EncodingLevel",
+		Label:      "Encoding level",
+		Definition: "A one-character code that indicates the fullness of the bibliographic information and/or content designation of the MARC record.",
+		Values: map[string]string{
+			"#": "Full level",
+			"1": "Full level, material not examined",
+			"2": "Less-than-full level, material not examined",
+			"3": "Abbreviated level",
+			"4": "Core level",
+			"5": "Partial (preliminary) level",
+			"7": "Minimal level",
+			"8": "Prepublication level",
+			"u": "Unknown",
+			"z": "Not applicable",
+		},
+	},
+	{
+		Position:   "18",
+		Name:       "CatalogingForm",
+		Label:      "Descriptive cataloging form",
+		Definition: "A one-character code that indicates characteristics of the descriptive data in the record that are related to the conventions or rules used in formulating the data.",
+		Values: map[string]string{
+			"#": "Non-ISBD",
+			"a": "AACR2",
+			"c": "ISBD punctuation included",
+			"i": "ISBD punctuation omitted",
+			"n": "Non-ISBD punctuation omitted",
+			"u": "Unknown",
+		},
+	},
+	{
+		Position:   "19",
+		Name:       "MultipartResource",
+		Label:      "Multipart resource record level",
+		Definition: "A one-character code that indicates whether the record is for a multipart resource and, if so, the level in the resource hierarchy of the record.",
+		Values: map[string]string{
+			"#": "Not specified or not applicable",
+			"a": "Set",
+			"b": "Part with independent title",
+			"c": "Part with dependent title",
+		},
+	},
+	{
+		Position:   "20",
+		Name:       "LengthOfFieldLength",
+		Label:      "Length of the length-of-field portion",
+		Definition: "A one-character number that indicates the number of character positions used for the length-of-field portion in each directory entry. In MARC 21, the value is always 4.",
+		Values: map[string]string{
+			"4": "Number of characters for length-of-field in directory (always 4)",
+		},
+	},
+	{
+		Position:   "21",
+		Name:       "StartingCharacterPositionLength",
+		Label:      "Length of the starting-character-position portion",
+		Definition: "A one-character number that indicates the number of character positions used for the starting-character-position portion in each directory entry. In MARC 21, the value is always 5.",
+		Values: map[string]string{
+			"5": "Number of characters for starting-character-position in directory (always 5)",
+		},
+	},
+	{
+		Position:   "22",
+		Name:       "ImplementationDefinedLength",
+		Label:      "Length of the implementation-defined portion",
+		Definition: "A one-character number that indicates the number of character positions used for the implementation-defined portion in each directory entry. In MARC 21, the value is always 0.",
+		Values: map[string]string{
+			"0": "Number of implementation-defined characters in directory entry (always 0)",
+		},
+	},
+	{
+		Position:   "23",
+		Name:       "Undefined",
+		Label:      "Undefined",
+		Definition: "Undefined character position. The value is always 0.",
+		Values: map[string]string{
+			"0": "Undefined (always 0)",
+		},
+	},
+}
