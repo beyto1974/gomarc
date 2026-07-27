@@ -152,6 +152,20 @@ go run ./cmd/marcdump testdata/marc.dat
 go run ./cmd/marcdump -json testdata/marc.dat
 ```
 
+`cmd/marcannotate` reads a single MARC21 record (ISO 2709, MARCXML, or
+MARC-in-JSON, auto-detected) and prints it as an LLM-ready Markdown document:
+the leader and 008 broken down position-by-position with coded meanings, a
+legend of field/indicator/subfield descriptions (one entry per distinct tag,
+not per occurrence), and the record's raw field data.
+
+```sh
+go run ./cmd/marcannotate testdata/marc.dat
+go run ./cmd/marcannotate -coverage all testdata/marc.dat
+cat testdata/marc.dat | go run ./cmd/marcannotate -
+```
+
+`-coverage` selects the schema depth: `common` (default) or `all`.
+
 ## Performance & Comparison with pymarc
 
 `gomarc` features a high-performance, streaming parser architecture designed for high-throughput processing, featuring zero-allocation field tag normalization, direct byte-slice integer parsing, and reflection-free MARCXML decoding.
