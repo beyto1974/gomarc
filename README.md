@@ -9,7 +9,7 @@ MARCXML.
 ## Installation
 
 ```sh
-go get github.com/beyto1974/gomarc@v0.1.0
+go get github.com/beyto1974/gomarc@v1.0.0
 ```
 
 ```go
@@ -18,6 +18,9 @@ import marc "github.com/beyto1974/gomarc"
 
 Public repo, so the normal module proxy (proxy.golang.org) and checksum
 database (sum.golang.org) resolve it with no extra setup.
+
+The v1 API is stable: within `v1.x` the exported surface of `marc` and
+`marc/schema` only grows, it doesn't change shape.
 
 ## Reading
 
